@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2011, 2013 SAP AG and others.
+ * Copyright (c) 2011, 2019 SAP AG and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -19,8 +19,9 @@ import java.net.URI;
 public class ResourceUtil {
 
     public enum P2Repositories {
-        ECLIPSE_342("e342"), ECLIPSE_352("e352"), ECLIPSE_KEPLER("kepler"), ECLIPSE_OXYGEN("oxygen"), SIMPLE_FEATURE(
-                "feature");
+        ECLIPSE_342("e342"), ECLIPSE_352("e352"), ECLIPSE_OXYGEN(
+                "http:////download.eclipse.org/releases/oxygen/"), ECLIPSE_LATEST(
+                        "http:////download.eclipse.org/releases/2019-12/");
 
         private final String path;
 
@@ -29,6 +30,9 @@ public class ResourceUtil {
         }
 
         public URI getResolvedLocation() throws IllegalStateException {
+            if (path.startsWith("http:")) {
+                return URI.create(path);
+            }
             return resolveTestResource("repositories/" + path).toURI();
         }
 

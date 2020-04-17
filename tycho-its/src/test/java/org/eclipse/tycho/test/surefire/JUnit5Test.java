@@ -33,8 +33,30 @@ public class JUnit5Test extends AbstractTychoIntegrationTest {
         assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit4Test", "testWithJUnit4");
         assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit5Test",
                 "myFirstJUnit5Test{TestInfo}");
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit5Test",
+                "parameterizedJUnit5Test{String}[1]");
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit5Test",
+                "parameterizedJUnit5Test{String}[2]");
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit5Test", "repeatedJUnit5Test[1]");
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit5Test", "repeatedJUnit5Test[2]");
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit5Test", "repeatedJUnit5Test[3]");
         // make sure test tagged as 'slow' was skipped
-        assertNumberOfSuccessfulTests(projectBasedir, "bundle.test.JUnit5Test", 1);
+        assertNumberOfSuccessfulTests(projectBasedir, "bundle.test.JUnit5Test", 6);
+    }
+
+    @Test
+    public void testJUnit54Runner() throws Exception {
+        Verifier verifier = getVerifier("/surefire.junit54/bundle.test", false);
+        Properties props = verifier.getSystemProperties();
+        props.setProperty("repo-2019-03", P2Repositories.ECLIPSE_LATEST.toString());
+        verifier.executeGoal("verify");
+        verifier.verifyErrorFreeLog();
+        String projectBasedir = verifier.getBasedir();
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit4Test", "testWithJUnit4");
+        assertTestMethodWasSuccessfullyExecuted(projectBasedir, "bundle.test.JUnit54Test",
+                "myFirstJUnit54Test{TestInfo}");
+        // make sure test tagged as 'slow' was skipped
+        assertNumberOfSuccessfulTests(projectBasedir, "bundle.test.JUnit54Test", 1);
     }
 
 }

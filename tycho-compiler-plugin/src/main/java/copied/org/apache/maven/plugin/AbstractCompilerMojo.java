@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import org.apache.maven.plugin.AbstractMojo;
@@ -112,6 +113,12 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
      */
     @Parameter(property = "maven.compiler.target")
     protected String target;
+
+    /**
+     * The -release argument for the Java compiler
+     */
+    @Parameter(property = "maven.compiler.release")
+    protected String release;
 
     /**
      * The -encoding argument for the Java compiler (kept for backwards compatibility)
@@ -218,7 +225,7 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
      * @deprecated use {@link #compilerArgs} instead.
      */
     @Parameter
-    private Map compilerArguments;
+    private Map<String, String> compilerArguments;
 
     /**
      * Arguments to be passed to the compiler.
@@ -274,7 +281,7 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
 
     protected abstract List<String> getClasspathElements() throws MojoExecutionException;
 
-    protected abstract List getCompileSourceRoots() throws MojoExecutionException;
+    protected abstract List<String> getCompileSourceRoots() throws MojoExecutionException;
 
     protected abstract File getOutputDirectory();
 
@@ -366,9 +373,7 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
 
             getLog().debug("Source roots:");
 
-            for (Iterator it = getCompileSourceRoots().iterator(); it.hasNext();) {
-                String root = (String) it.next();
-
+            for (String root : getCompileSourceRoots()) {
                 getLog().debug(" " + root);
             }
 
@@ -456,13 +461,15 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
         compilerConfiguration.setSourceVersion(source != null ? source : DEFAULT_SOURCE_VERSION);
 
         compilerConfiguration.setTargetVersion(target != null ? target : DEFAULT_TARGET_VERSION);
+        if (release != null) {
+            compilerConfiguration.setReleaseVersion(release);
+        }
 
         compilerConfiguration.setSourceEncoding(getEncoding());
 
         if ((compilerArguments != null) || (compilerArgument != null) || compilerArgs != null) {
             if (compilerArguments != null) {
-                for (Iterator i = compilerArguments.entrySet().iterator(); i.hasNext();) {
-                    Map.Entry me = (Map.Entry) i.next();
+                for (Entry<String, String> me : compilerArguments.entrySet()) {
                     String key = (String) me.getKey();
                     String value = (String) me.getValue();
                     if (!key.startsWith("-")) {
@@ -577,9 +584,7 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
 
         Set<File> staleSources = new HashSet<>();
 
-        for (Iterator it = getCompileSourceRoots().iterator(); it.hasNext();) {
-            String sourceRoot = (String) it.next();
-
+        for (String sourceRoot : getCompileSourceRoots()) {
             File rootFile = new File(sourceRoot);
 
             if (!rootFile.isDirectory()) {
@@ -601,12 +606,11 @@ public abstract class AbstractCompilerMojo extends AbstractMojo {
      * @todo also in ant plugin. This should be resolved at some point so that it does not need to
      *       be calculated continuously - or should the plugins accept empty source roots as is?
      */
-    protected static List<String> removeEmptyCompileSourceRoots(List compileSourceRootsList) {
+    protected static List<String> removeEmptyCompileSourceRoots(List<String> compileSourceRootsList) {
         List<String> newCompileSourceRootsList = new ArrayList<>();
         if (compileSourceRootsList != null) {
             // copy as I may be modifying it
-            for (Iterator i = compileSourceRootsList.iterator(); i.hasNext();) {
-                String srcDir = (String) i.next();
+            for (String srcDir : compileSourceRootsList) {
                 if (!newCompileSourceRootsList.contains(srcDir) && new File(srcDir).exists()) {
                     newCompileSourceRootsList.add(srcDir);
                 }

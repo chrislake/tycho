@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2014 Sonatype Inc. and others.
+ * Copyright (c) 2008, 2020 Sonatype Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,9 +11,9 @@
  *******************************************************************************/
 package org.eclipse.tycho.p2.resolver;
 
-import static org.hamcrest.CoreMatchers.isA;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -29,14 +29,9 @@ import org.eclipse.tycho.p2.target.facade.TargetDefinition.InstallableUnitLocati
 import org.eclipse.tycho.p2.target.facade.TargetDefinition.Location;
 import org.eclipse.tycho.p2.target.facade.TargetDefinition.ProfilePlatformLocation;
 import org.eclipse.tycho.p2.target.facade.TargetDefinitionSyntaxException;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 
 public class TargetDefinitionFileTest {
-
-    @Rule
-    public ExpectedException expectedException = ExpectedException.none();
 
     @Test
     public void testTarget() throws Exception {
@@ -45,7 +40,7 @@ public class TargetDefinitionFileTest {
 
         InstallableUnitLocation location = (InstallableUnitLocation) locations.get(0);
         assertEquals(1, location.getRepositories().size());
-        assertEquals(URI.create("http://download.eclipse.org/eclipse/updates/3.5/"),
+        assertEquals(URI.create("https://download.eclipse.org/eclipse/updates/3.5/"),
                 location.getRepositories().get(0).getLocation());
         assertEquals(1, location.getUnits().size());
         assertEquals("org.eclipse.platform.sdk", location.getUnits().get(0).getId());
@@ -56,7 +51,7 @@ public class TargetDefinitionFileTest {
         assertEquals(2, l02.getRepositories().size());
         assertEquals(URI.create("http://subclipse.tigris.org/update_1.6.x/"),
                 l02.getRepositories().get(0).getLocation());
-        assertEquals(URI.create("http://download.eclipse.org/tools/mylyn/update/e3.4/"),
+        assertEquals(URI.create("https://download.eclipse.org/tools/mylyn/update/e3.4/"),
                 l02.getRepositories().get(1).getLocation());
     }
 
@@ -124,18 +119,20 @@ public class TargetDefinitionFileTest {
 
     @Test
     public void testInvalidXML() throws Exception {
-        expectedException.expectCause(isA(TargetDefinitionSyntaxException.class));
-        readTarget("invalidXML.target").getLocations();
+        try {
+            readTarget("invalidXML.target").getLocations();
+        } catch (RuntimeException e) {
+            assertEquals(TargetDefinitionSyntaxException.class, e.getCause().getClass());
+        }
     }
 
     public void testInvalidIncludeMode() throws Exception {
-        expectedException.expect(TargetDefinitionSyntaxException.class);
 
         List<? extends Location> locations = readTarget("invalidMode.target").getLocations();
 
         // allow exception to be thrown late
         InstallableUnitLocation invalidIncludeModeLocation = (InstallableUnitLocation) locations.get(0);
-        invalidIncludeModeLocation.getIncludeMode();
+        assertThrows(TargetDefinitionSyntaxException.class, () -> invalidIncludeModeLocation.getIncludeMode());
     }
 
     @Test

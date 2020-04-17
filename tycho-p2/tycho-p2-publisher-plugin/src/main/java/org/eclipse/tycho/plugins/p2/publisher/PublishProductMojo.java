@@ -10,8 +10,6 @@
  *******************************************************************************/
 package org.eclipse.tycho.plugins.p2.publisher;
 
-import static org.apache.commons.lang3.StringUtils.isEmpty;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -51,12 +49,12 @@ import org.osgi.framework.Version;
  * project.
  * </p>
  * 
- * @see http://wiki.eclipse.org/Equinox/p2/Publisher
+ * @see https://wiki.eclipse.org/Equinox/p2/Publisher
  */
-@Mojo(name = "publish-products", defaultPhase = LifecyclePhase.PACKAGE)
+@Mojo(name = "publish-products", defaultPhase = LifecyclePhase.PACKAGE, threadSafe = true)
 public final class PublishProductMojo extends AbstractPublishMojo {
 
-    // as per http://download.eclipse.org/releases/luna/201502271000/features/org.eclipse.equinox.executable_3.6.102.v20150204-1316.jar
+    // as per https://download.eclipse.org/releases/luna/201502271000/features/org.eclipse.equinox.executable_3.6.102.v20150204-1316.jar
     private static final Version LUNA_SR2_EXECUTABLE_FEATURE_VERSION = Version.parseVersion("3.6.102.v20150204-1316");
 
     /**
@@ -92,10 +90,10 @@ public final class PublishProductMojo extends AbstractPublishMojo {
         for (File productFile : eclipseRepositoryProject.getProductFiles(getProject())) {
             try {
                 ProductConfiguration productConfiguration = ProductConfiguration.read(productFile);
-                if (isEmpty(productConfiguration.getId())) {
+                if (productConfiguration.getId().isEmpty()) {
                     throw new MojoExecutionException("The product file " + productFile.getName()
                             + " does not contain the mandatory attribute 'uid'. Please ensure you entered an id in the product file.");
-                } else if (isEmpty(productConfiguration.getVersion())) {
+                } else if (productConfiguration.getVersion().isEmpty()) {
                     throw new MojoExecutionException("The product file " + productFile.getName()
                             + " does not contain the mandatory attribute 'version'. Please ensure you entered a version in the product file.");
                 }
@@ -144,7 +142,7 @@ public final class PublishProductMojo extends AbstractPublishMojo {
                     locker.release();
                 }
             } catch (ArchiverException e) {
-                throw new MojoFailureException("Unable to unzip the eqiuinox executable feature", e);
+                throw new MojoFailureException("Unable to unzip the equinox executable feature", e);
             }
         }
     }

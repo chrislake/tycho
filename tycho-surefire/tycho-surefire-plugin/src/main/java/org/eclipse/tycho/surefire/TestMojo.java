@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2019 Sonatype Inc. and others.
+ * Copyright (c) 2008, 2020 Sonatype Inc. and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,6 +10,7 @@
  *    SAP SE - port to surefire 2.10
  *    Mickael Istria (Red Hat Inc.) - 386988 Support for provisioned applications
  *    Bachmann electrontic GmbH - 510425 parallel mode requires threadCount>1 or useUnlimitedThreads=true
+ *    Christoph Läubrich - improve error message in case of failures
  ******************************************************************************/
 package org.eclipse.tycho.surefire;
 
@@ -110,19 +111,27 @@ import org.osgi.framework.Version;
  * configuration on the <tt>target-platform-configuration</tt> plugin.
  * </p>
  */
-@Mojo(name = "test", defaultPhase = LifecyclePhase.INTEGRATION_TEST, requiresDependencyResolution = ResolutionScope.RUNTIME)
+@Mojo(name = "test", defaultPhase = LifecyclePhase.INTEGRATION_TEST, requiresDependencyResolution = ResolutionScope.RUNTIME, threadSafe = true)
 public class TestMojo extends AbstractMojo {
+
+    private static String[] UNIX_SIGNAL_NAMES = { "not a signal", // padding, singles start with 1
+            "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGKILL", "SIGUSR1",
+            "SIGSEGV", "SIGUSR2", "SIGPIPE", "SIGALRM", "SIGTERM", "SIGSTKFLT", "SIGCHLD", "SIGCONT", "SIGSTOP",
+            "SIGTSTP", "SIGTTIN", "SIGTTOU", "SIGURG", "SIGXCPU", "SIGXFSZ", "SIGVTALRM", "SIGPROF", "SIGWINCH",
+            "SIGIO", "SIGPWR", "SIGSYS" };
+
+    private static final Object LOCK = new Object();
 
     /**
      * Root directory (<a href=
-     * "http://help.eclipse.org/indigo/topic/org.eclipse.platform.doc.isv/reference/misc/runtime-options.html#osgiinstallarea"
+     * "https://help.eclipse.org/indigo/topic/org.eclipse.platform.doc.isv/reference/misc/runtime-options.html#osgiinstallarea"
      * >osgi.install.area</a>) of the Equinox runtime used to execute tests.
      */
     @Parameter(defaultValue = "${project.build.directory}/work")
     private File work;
     /**
      * <a href=
-     * "http://help.eclipse.org/juno/topic/org.eclipse.platform.doc.isv/reference/misc/runtime-options.html#osgiinstancearea"
+     * "https://help.eclipse.org/juno/topic/org.eclipse.platform.doc.isv/reference/misc/runtime-options.html#osgiinstancearea"
      * >OSGi data directory</a> (<code>osgi.instance.area</code>, aka the workspace) of the Equinox
      * runtime used to execute tests.
      */
@@ -253,11 +262,11 @@ public class TestMojo extends AbstractMojo {
     /**
      * Additional dependencies to be added to the test runtime. Ignored if {@link #testRuntime} is
      * <code>p2Installed</code>.
-     * 
+     *
      * Note: This parameter has only limited support for dependencies to artifacts within the
      * reactor. Therefore it is recommended to specify <tt>extraRequirements</tt> on the
      * <tt>target-platform-configuration</tt> plugin instead. Example:
-     * 
+     *
      * <pre>
      * &lt;plugin&gt;
      *    &lt;groupId&gt;org.eclipse.tycho&lt;/groupId&gt;
@@ -276,7 +285,7 @@ public class TestMojo extends AbstractMojo {
      *    &lt;/configuration&gt;
      * &lt;/plugin&gt;
      * </pre>
-     * 
+     *
      * The dependencies specified as <tt>extraRequirements</tt> are &ndash; together with the
      * dependencies specified in the <tt>MANIFEST.MF</tt> of the project &ndash; transitively
      * resolved against the target platform. The resulting set of bundles is included in the test
@@ -289,7 +298,7 @@ public class TestMojo extends AbstractMojo {
      * Eclipse application to be run. If not specified, default application
      * org.eclipse.ui.ide.workbench will be used. Application runnable will be invoked from test
      * harness, not directly from Eclipse.
-     * 
+     *
      * Note that you need to ensure that the bundle which defines the configured application is
      * included in the test runtime.
      */
@@ -320,7 +329,7 @@ public class TestMojo extends AbstractMojo {
     /**
      * By default, Tycho Surefire disables JVM assertions for the execution of your test cases. To
      * enable the assertions, set this flag to "true".
-     * 
+     *
      * @since 1.5.0
      */
     @Parameter(property = "enableAssertions", defaultValue = "false")
@@ -352,7 +361,7 @@ public class TestMojo extends AbstractMojo {
      * Identifies a single test (suite) class to run. This is useful if you have a single JUnit test
      * suite class defining which tests should be executed. Will be ignored if {@link #test} is
      * specified. Example:
-     * 
+     *
      * <pre>
      * &lt;testClass&gt;foo.bar.FooTest&lt;/testClass&gt;
      * </pre>
@@ -390,7 +399,7 @@ public class TestMojo extends AbstractMojo {
     /**
      * Bundle start level and auto start configuration used by the test runtime. Ignored if
      * {@link #testRuntime} is <code>p2Installed</code>. Example:
-     * 
+     *
      * <pre>
      * &lt;bundleStartLevel&gt;
      *   &lt;bundle&gt;
@@ -408,7 +417,7 @@ public class TestMojo extends AbstractMojo {
      * The default bundle start level and auto start configuration used by the test runtime for
      * bundles where the start level/auto start is not configured in {@link #bundleStartLevel}.
      * Ignored if {@link #testRuntime} is <code>p2Installed</code>. Example:
-     * 
+     *
      * <pre>
      *   &lt;defaultStartLevel&gt;
      *     &lt;level&gt;6&lt;/level&gt;
@@ -464,10 +473,10 @@ public class TestMojo extends AbstractMojo {
      * Normally tycho will automatically determine the test framework provider based on the test
      * project's classpath. Use this to force using a test framework provider implementation with
      * the given role hint. Tycho comes with providers
-     * &quot;junit3&quot;,&quot;junit4&quot;,&quot;junit47&quot;. Note that when specifying a
-     * providerHint, you have to make sure the provider is actually available in the dependencies of
-     * tycho-surefire-plugin.
-     * 
+     * &quot;junit3&quot;,&quot;junit4&quot;,&quot;junit47&quot;,&quot;junit5&quot;. Note that when
+     * specifying a providerHint, you have to make sure the provider is actually available in the
+     * dependencies of tycho-surefire-plugin.
+     *
      * @since 0.16.0
      */
     @Parameter
@@ -477,7 +486,7 @@ public class TestMojo extends AbstractMojo {
      * Defines the order the tests will be run in. Supported values are "alphabetical",
      * "reversealphabetical", "random", "hourly" (alphabetical on even hours, reverse alphabetical
      * on odd hours) and "filesystem".
-     * 
+     *
      * @since 0.19.0
      */
     @Parameter(defaultValue = "filesystem")
@@ -494,7 +503,7 @@ public class TestMojo extends AbstractMojo {
     /**
      * (JUnit 4.7 provider) Supports values "classes"/"methods"/"both" to run in separate threads,
      * as controlled by threadCount.
-     * 
+     *
      * @since 0.16.0
      */
     @Parameter(property = "parallel")
@@ -502,7 +511,7 @@ public class TestMojo extends AbstractMojo {
 
     /**
      * (JUnit 4.7 provider) Indicates that threadCount is per cpu core.
-     * 
+     *
      * @since 0.16.0
      */
     @Parameter(property = "perCoreThreadCount", defaultValue = "true")
@@ -512,7 +521,7 @@ public class TestMojo extends AbstractMojo {
      * (JUnit 4.7 provider) The attribute thread-count allows you to specify how many threads should
      * be allocated for this execution. Only makes sense to use in conjunction with the parallel
      * parameter.
-     * 
+     *
      * @since 0.16.0
      */
     @Parameter(property = "threadCount")
@@ -522,7 +531,7 @@ public class TestMojo extends AbstractMojo {
      * (JUnit 4.7 provider) Indicates that the thread pool will be unlimited. The parallel parameter
      * and the actual number of classes/methods will decide. Setting this to "true" effectively
      * disables perCoreThreadCount and threadCount.
-     * 
+     *
      * @since 0.16.0
      */
     @Parameter(property = "useUnlimitedThreads", defaultValue = "false")
@@ -530,7 +539,7 @@ public class TestMojo extends AbstractMojo {
 
     /**
      * Use this to specify surefire provider-specific properties.
-     * 
+     *
      * @since 0.16.0
      */
     @Parameter
@@ -553,9 +562,9 @@ public class TestMojo extends AbstractMojo {
      * with a certain performance overhead for executing the provisioning operations otherwise not
      * required.</li>
      * </ul>
-     * 
+     *
      * Example configuration which will install product IU under test "example.product.id" using p2:
-     * 
+     *
      * <pre>
      * &lt;plugin&gt;
      *    &lt;groupId&gt;org.eclipse.tycho&lt;/groupId&gt;
@@ -583,7 +592,7 @@ public class TestMojo extends AbstractMojo {
      *    &lt;/configuration&gt;
      * &lt;/plugin&gt;
      * </pre>
-     * 
+     *
      * @since 0.19.0
      */
     @Parameter(defaultValue = "default")
@@ -591,13 +600,13 @@ public class TestMojo extends AbstractMojo {
 
     /**
      * p2 <a href=
-     * "http://help.eclipse.org/kepler/index.jsp?topic=%2Forg.eclipse.platform.doc.isv%2Fguide%2Fp2_director.html"
+     * "https://help.eclipse.org/kepler/index.jsp?topic=%2Forg.eclipse.platform.doc.isv%2Fguide%2Fp2_director.html"
      * >profile</a> name of the installation under test.
-     * 
+     *
      * Only relevant if {@link #testRuntime} is <code>p2Installed</code>. If tests are installed on
      * top of an already existing installation in {@link #work}, this must match the name of the
      * existing profile.
-     * 
+     *
      * @since 0.19.0
      */
     // default value should be kept the same as DirectorMojo#profile default value
@@ -633,16 +642,16 @@ public class TestMojo extends AbstractMojo {
      * The value of BREE will be matched against the id of the toolchain elements in
      * toolchains.xml.</li>
      * </ul>
-     * 
+     *
      * Example for BREE: <br>
      * In <code>META-INF/MANIFEST.MF</code>:
-     * 
+     *
      * <pre>
      * Bundle-RequiredExecutionEnvironment: JavaSE-1.7
      * </pre>
-     * 
+     *
      * In toolchains.xml:
-     * 
+     *
      * <pre>
      * &lt;toolchains&gt;
      *    &lt;toolchain&gt;
@@ -665,7 +674,7 @@ public class TestMojo extends AbstractMojo {
      * suite files. The suite files will overwrite the {@link #includes} and {@link #excludes}
      * patterns. The path to the suite file(s) could be relative (test bundle classpath) or an
      * absolute path to xml files outside the test bundle.
-     * 
+     *
      * <pre>
      * &lt;configuration&gt;
      *   &lt;suiteXmlFiles&gt;
@@ -689,17 +698,19 @@ public class TestMojo extends AbstractMojo {
             return;
         }
 
-        EquinoxInstallation equinoxTestRuntime;
-        if ("p2Installed".equals(testRuntime)) {
-            equinoxTestRuntime = createProvisionedInstallation();
-        } else if ("default".equals(testRuntime)) {
-            equinoxTestRuntime = createEclipseInstallation();
-        } else {
-            throw new MojoExecutionException("Configured testRuntime parameter value '" + testRuntime
-                    + "' is unkown. Allowed values: 'default', 'p2Installed'.");
-        }
+        synchronized (LOCK) {
+            EquinoxInstallation equinoxTestRuntime;
+            if ("p2Installed".equals(testRuntime)) {
+                equinoxTestRuntime = createProvisionedInstallation();
+            } else if ("default".equals(testRuntime)) {
+                equinoxTestRuntime = createEclipseInstallation();
+            } else {
+                throw new MojoExecutionException("Configured testRuntime parameter value '" + testRuntime
+                        + "' is unkown. Allowed values: 'default', 'p2Installed'.");
+            }
 
-        runTest(equinoxTestRuntime);
+            runTest(equinoxTestRuntime);
+        }
     }
 
     protected boolean shouldSkip() {
@@ -982,7 +993,7 @@ public class TestMojo extends AbstractMojo {
         } else {
             excludeList = defaultExcludes;
         }
-        // TODO bug 495353 we should we rather let TestListResolver do the work here 
+        // TODO bug 495353 we should we rather let TestListResolver do the work here
         // by passing in the unparsed String or Strings instead of already parsed include/exclude list
         // (this would add support for running single test methods, negation etc.)
         TestListResolver resolver = new TestListResolver(includeList, excludeList);
@@ -1005,13 +1016,15 @@ public class TestMojo extends AbstractMojo {
 
     private void runTest(EquinoxInstallation testRuntime) throws MojoExecutionException, MojoFailureException {
         int result;
+        File logFile = new File(osgiDataDirectory, ".metadata/.log");
+        LaunchConfiguration cli;
         try {
             if (deleteOsgiDataDirectory) {
                 FileUtils.deleteDirectory(osgiDataDirectory);
             }
-            LaunchConfiguration cli = createCommandLine(testRuntime);
-            getLog().info(
-                    "Expected eclipse log file: " + new File(osgiDataDirectory, ".metadata/.log").getAbsolutePath());
+            cli = createCommandLine(testRuntime);
+            getLog().info("Executing Test Runtime with timeout " + forkedProcessTimeoutInSeconds
+                    + ", logs (if any) will be placed at: " + logFile.getAbsolutePath());
             result = launcher.execute(cli, forkedProcessTimeoutInSeconds);
         } catch (Exception e) {
             throw new MojoExecutionException("Error while executing platform", e);
@@ -1052,10 +1065,51 @@ public class TestMojo extends AbstractMojo {
             break;
 
         default:
-            throw new MojoFailureException("An unexpected error occured while launching the test runtime (return code "
-                    + result + "). See log " + new File(osgiDataDirectory, ".metadata/.log").getAbsolutePath()
-                    + " for details.");
+            StringBuilder defaultMessage = new StringBuilder(
+                    "An unexpected error occurred while launching the test runtime (process returned error code ");
+            defaultMessage.append(decodeReturnCode(result));
+            defaultMessage.append(").");
+            if (logFile.exists()) {
+                defaultMessage.append(" The process logfile ");
+                defaultMessage.append(logFile.getAbsolutePath());
+                defaultMessage.append(" might contain further details.");
+            }
+            defaultMessage.append(" Command-line used to launch the sub-process was ");
+            defaultMessage.append(cli.getJvmExecutable());
+            String[] vmArguments = cli.getVMArguments();
+            if (vmArguments != null && vmArguments.length > 0) {
+                defaultMessage.append(" ");
+                defaultMessage.append(String.join(" ", vmArguments));
+            }
+            defaultMessage.append(" -jar ");
+            defaultMessage.append(cli.getLauncherJar());
+            String[] programArguments = cli.getProgramArguments();
+            if (programArguments != null && programArguments.length > 0) {
+                defaultMessage.append(" ");
+                defaultMessage.append(String.join(" ", programArguments));
+            }
+            defaultMessage.append(" in working directory ");
+            defaultMessage.append(cli.getWorkingDirectory());
+            throw new MojoFailureException(defaultMessage.toString());
         }
+    }
+
+    private String decodeReturnCode(int result) {
+        try {
+            Properties properties = (Properties) project.getContextValue(TychoConstants.CTX_MERGED_PROPERTIES);
+            if (PlatformPropertiesUtils.OS_LINUX.equals(PlatformPropertiesUtils.getOS(properties))) {
+                int signal = result - 128;
+                if (signal > 0 && signal < UNIX_SIGNAL_NAMES.length) {
+                    return result + "(" + UNIX_SIGNAL_NAMES[signal] + " received?)";
+                }
+            } else if (PlatformPropertiesUtils.OS_WIN32.equals(PlatformPropertiesUtils.getOS(properties))) {
+                return result + " (HRESULT Code 0x" + Integer.toHexString(result).toUpperCase()
+                        + ", check for example https://www.hresult.info/ for further details)";
+            }
+        } catch (RuntimeException e) {
+            getLog().debug("Decoding returncode failed", e);
+        }
+        return String.valueOf(result);
     }
 
     protected Toolchain getToolchain() throws MojoExecutionException {

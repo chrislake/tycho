@@ -51,7 +51,7 @@ import org.eclipse.jdt.internal.compiler.util.Util;
 import org.eclipse.tycho.compiler.jdt.copied.LibraryInfo;
 
 /**
- * See http://help.eclipse.org/ganymede/topic/org.eclipse.jdt.doc.isv/guide/jdt_api_options.htm
+ * See https://help.eclipse.org/ganymede/topic/org.eclipse.jdt.doc.isv/guide/jdt_api_options.htm
  */
 
 @Component(role = org.codehaus.plexus.compiler.Compiler.class, hint = "jdt")
@@ -131,6 +131,37 @@ public class JDTCompiler extends AbstractCompiler {
     public String[] buildCompilerArguments(CompilerConfiguration config, CustomCompilerConfiguration custom,
             String[] sourceFiles) {
         List<String> args = new ArrayList<>();
+        
+        Collection<Map.Entry<String, String>> customCompilerArgumentsEntries = config
+                .getCustomCompilerArgumentsEntries();
+        for (Map.Entry<String, String> entry : customCompilerArgumentsEntries) {
+
+            String key = entry.getKey();
+
+            if (StringUtils.isEmpty(key) || key.startsWith("@")) {
+                continue;
+            }
+
+            if ("use.java.home".equals(key)) {
+                custom.javaHome = entry.getValue();
+                continue;
+            }
+
+            if ("org.osgi.framework.system.packages".equals(key)) {
+                custom.bootclasspathAccessRules = entry.getValue();
+                continue;
+            }
+
+            args.add(key);
+
+            String value = entry.getValue();
+
+            if (StringUtils.isEmpty(value)) {
+                continue;
+            }
+
+            args.add(value);
+        }
 
         // ----------------------------------------------------------------------
         // Set output
@@ -234,40 +265,14 @@ public class JDTCompiler extends AbstractCompiler {
             args.add(config.getSourceVersion());
         }
 
+        if (!StringUtils.isEmpty(config.getReleaseVersion())) {
+            args.add("--release");
+            args.add(config.getReleaseVersion());
+        }
+
         if (!suppressEncoding(config) && !StringUtils.isEmpty(config.getSourceEncoding())) {
             args.add("-encoding");
             args.add(config.getSourceEncoding());
-        }
-
-        Collection<Map.Entry<String, String>> customCompilerArgumentsEntries = config
-                .getCustomCompilerArgumentsEntries();
-        for (Map.Entry<String, String> entry : customCompilerArgumentsEntries) {
-
-            String key = entry.getKey();
-
-            if (StringUtils.isEmpty(key) || key.startsWith("@")) {
-                continue;
-            }
-
-            if ("use.java.home".equals(key)) {
-                custom.javaHome = entry.getValue();
-                continue;
-            }
-
-            if ("org.osgi.framework.system.packages".equals(key)) {
-                custom.bootclasspathAccessRules = entry.getValue();
-                continue;
-            }
-
-            args.add(key);
-
-            String value = entry.getValue();
-
-            if (StringUtils.isEmpty(value)) {
-                continue;
-            }
-
-            args.add(value);
         }
 
         return args.toArray(new String[args.size()]);

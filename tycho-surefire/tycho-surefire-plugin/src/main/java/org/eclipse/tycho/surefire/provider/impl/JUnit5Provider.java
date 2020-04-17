@@ -52,7 +52,7 @@ public class JUnit5Provider extends AbstractJUnitProvider {
 
     @Override
     protected VersionRange getJUnitVersionRange() {
-        return new VersionRange("[5,6)");
+        return new VersionRange("[5,5.4)");
     }
 
 }
