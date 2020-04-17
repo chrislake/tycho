@@ -10,6 +10,8 @@
  *******************************************************************************/
 package org.eclipse.tycho.p2.target;
 
+import java.io.File;
+import java.io.FilenameFilter;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -19,7 +21,9 @@ import java.util.List;
 import java.util.Set;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.equinox.p2.core.IProvisioningAgent;
 import org.eclipse.equinox.p2.core.ProvisionException;
 import org.eclipse.equinox.p2.metadata.IInstallableUnit;
@@ -29,11 +33,18 @@ import org.eclipse.equinox.p2.metadata.MetadataFactory;
 import org.eclipse.equinox.p2.metadata.MetadataFactory.InstallableUnitDescription;
 import org.eclipse.equinox.p2.metadata.Version;
 import org.eclipse.equinox.p2.metadata.VersionRange;
+import org.eclipse.equinox.p2.publisher.IPublisherAction;
+import org.eclipse.equinox.p2.publisher.Publisher;
+import org.eclipse.equinox.p2.publisher.PublisherInfo;
+import org.eclipse.equinox.p2.publisher.eclipse.BundlesAction;
+import org.eclipse.equinox.p2.publisher.eclipse.FeaturesAction;
 import org.eclipse.equinox.p2.query.CompoundQueryable;
 import org.eclipse.equinox.p2.query.IQuery;
 import org.eclipse.equinox.p2.query.IQueryResult;
 import org.eclipse.equinox.p2.query.IQueryable;
 import org.eclipse.equinox.p2.query.QueryUtil;
+import org.eclipse.equinox.p2.repository.artifact.IArtifactRepository;
+import org.eclipse.equinox.p2.repository.artifact.IArtifactRepositoryManager;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepository;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
 import org.eclipse.osgi.util.NLS;
@@ -68,6 +79,7 @@ public final class TargetDefinitionResolver {
 
     private static final String SOURCE_IU_ID = "org.eclipse.tycho.internal.target.source.bundles";
 
+    private IArtifactRepositoryManager artifactManager;
     private IMetadataRepositoryManager metadataManager;
     private IRepositoryIdManager repositoryIdManager;
 
@@ -86,6 +98,7 @@ public final class TargetDefinitionResolver {
         this.logger = logger;
         this.monitor = new DuplicateFilteringLoggingProgressMonitor(logger); // entails that this class is not thread-safe
         this.metadataManager = (IMetadataRepositoryManager) agent.getService(IMetadataRepositoryManager.SERVICE_NAME);
+        this.artifactManager = (IArtifactRepositoryManager) agent.getService(IArtifactRepositoryManager.SERVICE_NAME);
         this.repositoryIdManager = (IRepositoryIdManager) agent.getService(IRepositoryIdManager.SERVICE_NAME);
     }
 
@@ -118,10 +131,21 @@ public final class TargetDefinitionResolver {
 
         for (Location locationDefinition : definition.getLocations()) {
             if (locationDefinition instanceof InstallableUnitLocation) {
-                resolverRun.addLocation((InstallableUnitLocation) locationDefinition);
+                if ("InstallableUnit".equals(locationDefinition.getTypeDescription())) {
+                    resolverRun.addLocation((InstallableUnitLocation) locationDefinition);
 
-                for (Repository repository : ((InstallableUnitLocation) locationDefinition).getRepositories()) {
-                    artifactRepositories.add(repository.getLocation());
+                    for (Repository repository : ((InstallableUnitLocation) locationDefinition).getRepositories()) {
+                        artifactRepositories.add(repository.getLocation());
+                    }
+                } else if ("Directory".equals(locationDefinition.getTypeDescription())) {
+                    URI path = ((InstallableUnitLocation) locationDefinition).getRepositories().get(0).getLocation();
+
+                    publishDirectory(path);
+                    resolverRun.addLocation((InstallableUnitLocation) locationDefinition);
+                    artifactRepositories.add(path);
+                } else {
+                    logger.warn(
+                            "Target location type '" + locationDefinition.getTypeDescription() + "' is not supported");
                 }
             } else {
                 logger.warn("Target location type '" + locationDefinition.getTypeDescription() + "' is not supported");
@@ -134,6 +158,74 @@ public final class TargetDefinitionResolver {
         }
 
         return new TargetDefinitionContent(resolverRun.resolve(), artifactRepositories);
+    }
+
+    @SuppressWarnings("restriction")
+    private void publishDirectory(URI path) {
+        File fileLocation = new File(path);
+        File pluginsLocation = new File(fileLocation + "/plugins");
+        File featuresLocation = new File(fileLocation + "/features");
+
+        try {
+            if (metadataManager.contains(fileLocation.toURI())) {
+                metadataManager.removeRepository(fileLocation.toURI());
+            }
+            if (artifactManager.contains(fileLocation.toURI())) {
+                artifactManager.removeRepository(fileLocation.toURI());
+            }
+            File artifactsXml = new File(fileLocation, "artifacts.xml");
+            if (artifactsXml.exists()) {
+                artifactsXml.delete();
+            }
+            File artifactsJar = new File(fileLocation, "artifacts.jar");
+            if (artifactsJar.exists()) {
+                artifactsJar.delete();
+            }
+            File contentXml = new File(fileLocation, "content.xml");
+            if (contentXml.exists()) {
+                contentXml.delete();
+            }
+            File contentJar = new File(fileLocation, "content.Jar");
+            if (contentJar.exists()) {
+                contentJar.delete();
+            }
+
+            IMetadataRepository metadataRepository = metadataManager.createRepository(fileLocation.toURI(),
+                    "Simple p2 Repository - " + fileLocation.getName(), IMetadataRepositoryManager.TYPE_SIMPLE_REPOSITORY, Collections.emptyMap());
+            IArtifactRepository artifactRepository = artifactManager.createRepository(fileLocation.toURI(),
+                    "Simple p2 Repository - " + fileLocation.getName(), IArtifactRepositoryManager.TYPE_SIMPLE_REPOSITORY, Collections.emptyMap());
+
+            // Attempt to Publish a directory and retry
+            PublisherInfo info = new PublisherInfo();
+            info.setMetadataRepository(metadataRepository);
+            info.setArtifactRepository(artifactRepository);
+
+            BundlesAction bundlesAction = new BundlesAction(pluginsLocation.listFiles(new FilenameFilter() {
+                @Override
+                public boolean accept(File dir, String name) {
+                    if (name.endsWith(".jar"))
+                        return true;
+                    return new File(dir, name).isDirectory();
+                }
+            }));
+
+            FeaturesAction featuresAction = new FeaturesAction(featuresLocation.listFiles());
+
+            IPublisherAction[] actions = new IPublisherAction[2];
+            actions[0] = bundlesAction;
+            actions[1] = featuresAction;
+
+            Publisher publisher = new Publisher(info);
+            IStatus status = publisher.publish(actions, new NullProgressMonitor());
+            metadataManager.removeRepository(fileLocation.toURI());
+            artifactManager.removeRepository(fileLocation.toURI());
+            if (!status.isOK()) {
+                status.getException().printStackTrace();
+                throw new ProvisionException(status.getMessage());
+            }
+        } catch (ProvisionException | OperationCanceledException e) {
+            e.printStackTrace();
+        }
     }
 
     private class ResolverRun {

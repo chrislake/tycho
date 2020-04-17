@@ -136,6 +136,10 @@ public class RepositoryReferenceTool {
                     if (artifactXml != null && artifactXml.isFile()) {
                         sources.addArtifactRepository(artifactXml.getParentFile());
                     }
+                    File contentXml = otherProject.getArtifact(RepositoryLayoutHelper.CLASSIFIER_P2_METADATA);
+                    if (contentXml != null && contentXml.isFile()) {
+                        sources.addMetadataRepository(contentXml.getParentFile());
+                    }
                 }
 
                 serializer.serialize(stream, targetPlatformInstallableUnits);

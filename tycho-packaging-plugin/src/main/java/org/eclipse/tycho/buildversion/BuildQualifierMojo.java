@@ -17,6 +17,7 @@ import static org.eclipse.tycho.TychoProperties.UNQUALIFIED_VERSION;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 
@@ -115,6 +116,24 @@ public class BuildQualifierMojo extends AbstractVersionMojo {
     @Parameter
     protected String timestampProvider;
 
+    /**
+     * <p>
+     * Type hint of a custom build timestamp provider.
+     * date
+     * - Use 'defaultValue' format
+     * rev
+     * - SVN: 1.0.0_12345
+     * - GIT: 1.0.0_123abcd
+     * date-rev
+     * - SVN: 1.0.0_12345
+     * - GIT: 1.0.0_123abcd
+     * </p>
+     * 
+     * @since 0.26.0
+     */
+    @Parameter(defaultValue = "rev")
+    protected String olQualifier;
+
     @Parameter(property = "mojoExecution", readonly = true)
     protected MojoExecution execution;
 
@@ -159,9 +178,21 @@ public class BuildQualifierMojo extends AbstractVersionMojo {
         }
 
         if (qualifier == null) {
-            Date timestamp = getBuildTimestamp();
-            qualifier = getQualifier(timestamp);
+            if (olQualifier.equals("date")) {
+                Date timestamp = getBuildTimestamp();
+                qualifier = getQualifier(timestamp);
+            } else if (olQualifier.equals("date-rev")) {
+                Long timestamp = getBuildTimestampLong();
+                getLog().info("Getting Qualifier: " + String.valueOf(timestamp) + "  (" + String.valueOf(System.identityHashCode(timestamp)) + ")");
+                qualifier = getQualifier(timestamp);
+                getLog().info("Returned Qualifier: " + qualifier);
+                qualifier += "-" + getBuildTimestampString();
+            } else {
+                qualifier = getBuildTimestampString();
+            }
         }
+
+        getLog().info("getBuildTimestampString() =>: " + qualifier);
 
         validateQualifier(qualifier);
 
@@ -192,7 +223,31 @@ public class BuildQualifierMojo extends AbstractVersionMojo {
     }
 
     String getQualifier(Date timestamp) {
-        return format.format(timestamp);
+        getLog().info("timestamp: " + timestamp.toString());
+
+        String fmtString = format.toPattern();
+        SimpleDateFormat qualFormat = new SimpleDateFormat(fmtString, Locale.ENGLISH);
+        qualFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        String formatted = qualFormat.format(timestamp);
+       getLog().info("formatted: " + formatted);
+
+        return formatted;
+    }
+
+    String getQualifier(long timestamp) {
+        getLog().info("timestamp: " + String.valueOf(timestamp));
+
+        String fmtString = format.toPattern();
+        SimpleDateFormat qualFormat = new SimpleDateFormat(fmtString, Locale.ROOT);
+        qualFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        Date ts = new Date(timestamp);
+        getLog().info("timestamp from long: " + ts.toString());
+        String formatted = qualFormat.format(ts);
+        getLog().info("formatted: " + formatted);
+
+        return formatted;
     }
 
     private String getUnqualifiedVersion() {
@@ -209,7 +264,27 @@ public class BuildQualifierMojo extends AbstractVersionMojo {
         if (provider == null) {
             throw new MojoExecutionException("Unable to lookup BuildTimestampProvider with hint='" + hint + "'");
         }
-        return provider.getTimestamp(session, project, execution);
+        Date dt = provider.getTimestamp(session, project, execution);
+        return new Date(dt.getTime());
+    }
+
+    protected long getBuildTimestampLong() throws MojoExecutionException {
+        String hint = timestampProvider != null ? timestampProvider : DefaultBuildTimestampProvider.ROLE_HINT;
+        BuildTimestampProvider provider = timestampProviders.get(hint);
+        if (provider == null) {
+            throw new MojoExecutionException("Unable to lookup BuildTimestampProvider with hint='" + hint + "'");
+        }
+        Date dt = provider.getTimestamp(session, project, execution);
+        return new Date(dt.getTime()).getTime();
+    }
+
+    protected String getBuildTimestampString() throws MojoExecutionException {
+        String hint = timestampProvider != null ? timestampProvider : DefaultBuildTimestampProvider.ROLE_HINT;
+        BuildTimestampProvider provider = timestampProviders.get(hint);
+        if (provider == null) {
+            throw new MojoExecutionException("Unable to lookup BuildTimestampProvider with hint='" + hint + "'");
+        }
+        return provider.getTimestampString(session, project, execution);
     }
 
     // TODO 382482 use this class throughout Tycho? 

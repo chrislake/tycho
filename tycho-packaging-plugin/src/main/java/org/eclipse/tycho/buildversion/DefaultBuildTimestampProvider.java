@@ -30,4 +30,9 @@ public class DefaultBuildTimestampProvider implements BuildTimestampProvider {
     public Date getTimestamp(MavenSession session, MavenProject project, MojoExecution execution) {
         return session.getStartTime();
     }
+
+    @Override
+    public String getTimestampString(MavenSession session, MavenProject project, MojoExecution execution) {
+        return Long.toString(session.getStartTime().getTime());
+    }
 }

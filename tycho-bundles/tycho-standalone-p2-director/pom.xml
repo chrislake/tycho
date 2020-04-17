@@ -36,8 +36,8 @@
 					<environments>
 						<!-- TODO publish an platform-independent product -->
 						<environment>
-							<os>linux</os>
-							<ws>gtk</ws>
+							<os>win32</os>
+							<ws>win32</ws>
 							<arch>x86_64</arch>
 						</environment>
 					</environments>

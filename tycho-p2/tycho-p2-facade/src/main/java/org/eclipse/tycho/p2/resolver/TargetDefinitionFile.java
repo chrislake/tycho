@@ -65,7 +65,7 @@ public final class TargetDefinitionFile implements TargetDefinition {
             return path;
         }
     }
-
+/*
     public class DirectoryTargetLocation extends AbstractPathLocation implements TargetDefinition.DirectoryLocation {
 
         public DirectoryTargetLocation(String path) {
@@ -77,6 +77,107 @@ public final class TargetDefinitionFile implements TargetDefinition {
             return "Directory";
         }
 
+    }
+*/
+    public class DirectoryTargetLocation implements TargetDefinition.InstallableUnitLocation {
+        private final Element dom;
+        private final String path;
+
+        public DirectoryTargetLocation(Element dom) {
+            this.dom = dom;
+            String path = dom.getAttributeValue("path");
+
+            // WORKSPACE should be changed to POM location from Maven properties somehow.
+            // ${project_loc:xyz}
+            if (path.contains("${project_loc")) {
+                if (path.contains("${project_loc:")) {
+                    path = path.replace("}", "").replace("${project_loc:", System.getenv("WORKSPACE") + "/");
+                }
+                else {
+                    path = path.replace("${project_loc}", System.getenv("WORKSPACE"));
+                }
+            }
+            // ${workspace_loc:xyz}
+            if (path.contains("${workspace_loc")) {
+                if (path.contains("${workspace_loc:")) {
+                    path = path.replace("}", "").replace("${workspace_loc:", System.getenv("WORKSPACE") + "/");
+                }
+                else {
+                    path = path.replace("${workspace_loc}", System.getenv("WORKSPACE"));
+                }
+            }
+            // ${system_property:xyz}
+            if (path.contains("${system_property")) {
+                String sysprop = path.split("}")[0].split(":")[1];
+                path = path.split("}")[1] + System.getProperty(sysprop);
+            }
+            
+            this.path = path;
+        }
+
+        @Override
+        public List<? extends TargetDefinition.Unit> getUnits() {
+            ArrayList<Unit> units = new ArrayList<>();
+
+            File featuresLocation = new File(path + "/features");
+            for (File file : featuresLocation.listFiles()) {
+                String featureName = file.getName().split("_")[0];
+                String featureVersion = "";
+                try {
+                    featureVersion = file.getName().split("_")[1];
+                } catch (Exception e) {
+                    featureVersion = "1.0.0";
+                }
+
+                Element unitDom = new Element("unit");
+                unitDom.addAttribute("id", featureName + ".feature.group");
+                unitDom.addAttribute("version", featureVersion);
+                units.add(new Unit(unitDom));
+            }
+
+            return Collections.unmodifiableList(units);
+        }
+
+        @Override
+        public List<? extends TargetDefinition.Repository> getRepositories() {
+            return getRepositoryImpls();
+        }
+
+        public List<Repository> getRepositoryImpls() {
+            Element node = new Element("repository");
+            node.addAttribute("location", new File(path).toURI().toString());
+
+            final List<Repository> repositories = new ArrayList<>(1);
+            repositories.add(new Repository(node));
+            return repositories;
+        }
+
+        @Override
+        public String getTypeDescription() {
+            return dom.getAttributeValue("type");
+        }
+
+        @Override
+        public IncludeMode getIncludeMode() {
+            return IncludeMode.SLICER;
+        }
+
+        @Override
+        public boolean includeAllEnvironments() {
+            return false;
+        }
+
+        @Override
+        public boolean includeSource() {
+            switch (includeSourceMode) {
+            case ignore:
+                return false;
+            case force:
+                return true;
+            default:
+                return true;
+            }
+        }
     }
 
     public class ProfileTargetPlatformLocation extends AbstractPathLocation
@@ -293,7 +394,7 @@ public final class TargetDefinitionFile implements TargetDefinition {
                 if ("InstallableUnit".equals(type)) {
                     locations.add(new IULocation(locationDom));
                 } else if ("Directory".equals(type)) {
-                    locations.add(new DirectoryTargetLocation(locationDom.getAttributeValue("path")));
+                    locations.add(new DirectoryTargetLocation(locationDom));
                 } else if ("Profile".equals(type)) {
                     locations.add(new ProfileTargetPlatformLocation(locationDom.getAttributeValue("path")));
                 } else if ("Feature".equals(type)) {

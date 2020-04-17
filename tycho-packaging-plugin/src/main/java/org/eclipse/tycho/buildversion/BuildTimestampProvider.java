@@ -25,4 +25,6 @@ public interface BuildTimestampProvider {
     public Date getTimestamp(MavenSession session, MavenProject project, MojoExecution execution)
             throws MojoExecutionException;
 
+    public String getTimestampString(MavenSession session, MavenProject project, MojoExecution execution)
+            throws MojoExecutionException;
 }

@@ -66,7 +66,9 @@ public class FeatureXmlTransformer {
 
         for (FeatureRef featureRef : feature.getIncludedFeatures()) {
             ArtifactKey includedFeature = resolveFeatureReference(targetPlatform, featureRef);
-            featureRef.setVersion(includedFeature.getVersion());
+            if (includedFeature != null) {
+                featureRef.setVersion(includedFeature.getVersion());
+            }
         }
 
         return feature;
@@ -86,8 +88,16 @@ public class FeatureXmlTransformer {
     private ArtifactKey resolveFeatureReference(TargetPlatform targetPlatform, FeatureRef featureRef)
             throws MojoFailureException {
         try {
-            return targetPlatform.resolveArtifact(ArtifactType.TYPE_ECLIPSE_FEATURE, featureRef.getId(),
-                    featureRef.getVersion());
+            try {
+                return targetPlatform.resolveArtifact(ArtifactType.TYPE_ECLIPSE_FEATURE, featureRef.getId(),
+                        featureRef.getVersion());
+            }
+            catch (Exception e) {
+                if (!featureRef.getDom().getAttributeValue("optional").equals("true")) {
+                    throw e;
+                }
+                return null;
+            }
         } catch (IllegalArtifactReferenceException e) {
             throw new MojoFailureException("Invalid feature reference with id=" + quote(featureRef.getId())
                     + " and version " + quote(featureRef.getVersion()) + ": " + e.getMessage(), e);
